@@ -1,0 +1,1121 @@
+---
+title: "Predicting Cardiovascular Disease"
+date: "November 25, 2019"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+    toc_depth: 2
+    toc_float: yes
+---
+
+```{r setup}
+# some of common options (and the defaults) are: 
+# include=T, eval=T, echo=T, results='hide'/'asis',..., collapse=F, warning=T, message=T, error=T, cache=T, fig.width=6, fig.height=4, fig.dim=c(6,4) #inches, fig.align='left'/'center','right', 
+#knitr::opts_chunk$set(include = F)
+knitr::opts_chunk$set(echo = F)
+options(scientific=T, digits = 3) 
+# options(scipen=9, digits = 3) 
+# âscipenâ: integer. A penalty to be applied when deciding to print numeric values in fixed or exponential notation.  Positive values bias towards fixed and negative towards scientific notation: fixed notation will be preferred unless it is more than âscipenâ digits wider.
+# use scipen=999 to prevent scientific notation at all times
+```
+
+```{r basicfcn}
+# can add quietly=T option to the require() function
+loadPkg = function(x) { if (!require(x,character.only=T, quietly =T)) { install.packages(x,dep=T,repos="http://cran.us.r-project.org"); if(!require(x,character.only=T)) stop("Package not found") } }
+```
+
+
+## Chapter 1: Introduction
+
+Cardiovascular diseases (CVD) are conditions that involve the heart and blood vessels. CVD affects the structures or function of your heart. Cardiovascular diseases can refer to a number of conditions such as coronary heart disease, cerebrovascular disease, and peripheral arterial disease. According to the World Health Organization, cardiovascular diseases are the number one cause of death globally: more people die annually from cardiovascular diseases than from any other cause. An estimated 17.9 million people died from cardiovascular diseases in 2016, representing 31% of all global deaths. Of these deaths, 85% are due to heart attack and stroke. Heart attacks and strokes are usually acute events and are mainly caused by a blockage that prevents blood from flowing to the heart or brain. The most common reason for this is a build-up of fatty deposits on the inner walls of the blood vessels that supply the heart or brain.(source)[https://www.who.int] 
+
+The Centers for Disease Control and Prevention state high blood pressure, high cholesterol, and smoking are key risk factors for heart disease. About half of Americans (47%) have at least one of these three risk factors. Several other medical conditions and lifestyle choices can also put people at a higher risk for heart disease, including poor diet, physical inactivity, and excessive alcohol use.(source)[https://www.cdc.gov/heartdisease/facts.htm]
+
+CVD costs the US about $200 billion each year for health care services, medications, and lost productivity. Most people do not know that they have CVD until they experience chest pain or numbness in the upper body. CVD can be diagnosed earlier, and patients should be well aware of their potential heart conditions through doctors if their health data can be analyzed and run through prediction models. With the fabulously improved computer technology and software nowadays, hospitals and small doctor offices can store health data for everyone, and the data can be used to predict if someone has CVD. Diagnosing correctly has become a challenge because a wrong decision can lead to patient death and loss of reputation of the doctor office. In addition, the cost for treating heart disease is high. Therefore, Therefore, a system that can predict heart disease is essential to help reduce the cost of treatment and deaths. Knowing the possibility of getting CVD helps patients have a proper care and prevention (directed by doctors) as early as possible.
+
+In this report, different prediction models including Logistic Regression, KNN, and Decision Tree are developed and performed on a dataset of 70,000 patient data with 11 features and 1 target. Then, the models are compared to determine the best model to predict CVD. Additionally, key factors contributing to CDV will be addressed to raise awareness.
+
+
+## Chapter 2: Description of Dataset
+
+For our second project, we have chosen a dataset that contains 70,000 records of patients data. We downloaded this dataset from (source)[https://www.kaggle.com/sulianova/cardiovascular-disease-dataset]. Following is a list of the variables contained in our  dataset:
+
+*  Age 
+
+*  Height 
+
+*  Weight 
+
+*  Gender 
+
+*  Systolic blood pressure 
+
+*  Diastolic blood pressure 
+
+*  Cholesterol | 1: normal, 2: above normal, 3: well above normal 
+
+*  Glucose | 1: normal, 2: above normal, 3: well above normal |
+
+*  Smoking 
+
+*  Alcohol intake 
+
+*  Physical activity 
+
+*  Presence or absence of cardiovascular disease 
+
+### Importing the cardio dataset and cleaning: 
+
+```{r,echoe=F}
+cardio = read.csv('cardio.csv')
+str(cardio)
+summary(cardio)
+```
+
+
+The column id is removed from the dataset. ap_hi and ap_lo should not be negative so the negative values are removed. Also, there is an unreasonable values for ap_hi and ap_lo which are 16020 and 11000. These values are unbelievable for a blood pressure reading, so we subset the data with ap_lo and ap_lo less than 500. We also converted the unit for variable age into years.
+
+```{r,include=F}
+#Remove id column
+cardio = cardio[,-1]
+#Remove negative values from ap_hi, ap_lo, and subset data with ap_hi and ap_lo less than 500.
+cardio_clean = subset(cardio, ap_hi > 0 & ap_hi < 500 & ap_lo > 0 & ap_lo < 500)
+
+#Convert age (days) into age(years)
+cardio_clean$age = round(cardio_clean$age / 365)
+```
+
+
+### Correlation matrix
+
+Correlation matrix is used here to see if there is any strong correlation between cardio and the other variables. 
+```{r, echo=F}
+loadPkg("corrplot")
+
+
+cor_matrix = cor(cardio_clean)
+#cor_matrix
+
+corrplot(cor_matrix, method="pie")
+
+```
+
+
+
+```{r corrplot1,include=T, warning=F, echo=F}
+
+corrplot.mixed(cor_matrix)
+```
+
+There is correlation between cardio and ap_hi, ap_lo, age, and cholesterol. However, these are not strong correlations.
+
+Gender, cholesterol, gluc, smoke, alco, active, and cardio variables are converted to factors.
+
+```{r, echo=F}
+#Convert some variables into factors
+cardio_clean$gender = as.factor(cardio_clean$gender)
+cardio_clean$cholesterol = as.factor(cardio_clean$cholesterol)
+cardio_clean$gluc = as.factor(cardio_clean$gluc)
+cardio_clean$smoke = as.factor(cardio_clean$smoke)
+cardio_clean$alco = as.factor(cardio_clean$alco)
+cardio_clean$active = as.factor(cardio_clean$active)
+cardio_clean$cardio = factor(cardio_clean$cardio, labels  = c(0,1))
+
+
+#Divide the dataset into two groups
+cardio_absent = subset(cardio_clean, cardio == 0)
+cardio_present = subset(cardio_clean, cardio == 1)
+
+#Let's look at the structure and summary of the cleaned dataset
+str(cardio_clean)
+#summary(cardio_clean)
+```
+
+## Chapter 3: EDA
+
+
+Pie chart: 
+```{r, include=F}
+#install.packages("assertthat")
+#install.packages("plotly")
+require(plotly)
+library(dplyr)
+
+p <- plot_ly() %>%
+  add_pie(data = count(cardio_clean, cholesterol), title = "Cholesterol", labels = ~cholesterol, values = ~n,
+          name = "Cholesterol", domain = list(row = 0, column = 0)) %>%
+  add_pie(data = count(cardio_clean, gluc), title = "Glucose", labels = ~gluc, values = ~n,
+          name = "Glucose", domain = list(row = 0, column = 1)) %>%
+  add_pie(data = count(cardio_clean, smoke), title = "Smoker", labels = ~smoke, values = ~n,
+          name = "Smoker", domain = list(row = 1, column = 0)) %>%
+  add_pie(data = count(cardio_clean, alco), title = "Alcohol Intake", labels = ~alco, values = ~n,
+          name = "Alcohol Intake", domain = list(row = 1, column = 1)) %>%
+  add_pie(data = count(cardio_clean, active), title = "Physically Active", labels = ~active, values = ~n,
+          name = "Physically Active", domain = list(row = 2, column = 0)) %>%
+  add_pie(data = count(cardio_clean, cardio), title = "Presence or Absence of Cardiovascular Disease", labels = ~cardio, values = ~n,
+          name = "Presence or Absence of Cardiovascular Disease ", domain = list(row = 2, column = 1)) %>%
+  layout(title = "Analyzing the Inputs of Patients", showlegend = F,
+         grid=list(rows=3, columns=3),
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+
+```
+
+
+Except the response variable cardio, there are 6 categorical variables in our dataset: gender, cholesterol, glucose, smoking, alcohol and physical activity. 
+
+We'll look at barplots and $\chi^{2}$ tests for each of them.
+
+Cardio vs Cholesterol:
+
+Barplot:
+
+```{r, echo=F}
+library(ggplot2)
+ggplot(data = cardio_clean, aes(x=cardio, fill=cholesterol))+
+  geom_bar()+
+  ggtitle("Cardio vs Cholesterol")+
+  xlab("Cardiovascular Disease")+
+  ylab("Count")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Cholesterol",
+                      breaks=c("1", "2", "3"),
+                      labels=c("1" = "Normal", "2" = "Above Normal", "3" = "Well Above Normal"))+
+  geom_text(stat = 'count', aes(label=..count..), position = position_stack(vjust = 0.5))
+```
+
+
+$\chi^{2}$ test of independence:
+```{r, echo=F}
+cho_cont <- table(cardio_clean$cholesterol, cardio_clean$cardio)
+#cho_cont
+
+cho_chi <- chisq.test(cho_cont)
+cho_chi
+```
+The p-value is `r cho_chi$p.value`. We can reject the null hypothesis because the p-value is much smaller than the alpha value 0.05. The null hypothesis of the test is that these two variables are independent. Hence, the cholesterol levels do have effects on cardiovasuclar disease.
+
+
+Cardio vs Glucose:
+
+Barplot:
+
+```{r, echo=F}
+ggplot(data = cardio_clean, aes(x=cardio, fill=gluc))+
+  geom_bar()+
+  ggtitle("Cardio vs Glucose")+
+  xlab("Cardiovascular Disease")+
+  ylab("Count")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Glucose",
+                      breaks=c("1", "2", "3"),
+                      labels=c("1" = "Normal", "2" = "Above Normal", "3" = "Well Above Normal"))+
+  geom_text(stat = 'count', aes(label=..count..), position = position_stack(vjust = 0.5))
+```
+
+$\chi^{2}$ test of independence:
+```{r, echo=F}
+gluc_cont <- table(cardio_clean$gluc, cardio_clean$cardio)
+#gluc_cont
+
+gluc_chi <- chisq.test(gluc_cont)
+gluc_chi
+```
+The p-value is `r gluc_chi$p.value`. We can reject the null hypothesis because the p-value is much smaller than the alpha value 0.05. The null hypothesis of the test is that these two variables are independent. Hence, the glucose levels do have effects on cardiovasuclar disease.
+
+
+Cardio vs Gender:
+
+Barplot:
+
+```{r, echo=F}
+ggplot(data = cardio_clean, aes(x=cardio, fill=gender))+
+  geom_bar()+
+  ggtitle("Cardio vs Gender")+
+  xlab("Cardiovascular Disease")+
+  ylab("Count")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Gender",
+                      breaks=c("1", "2"),
+                      labels=c("1" = "Female", "2" = "Male"))+
+  geom_text(stat = 'count', aes(label=..count..), position = position_stack(vjust = 0.5))
+```
+
+$\chi^{2}$ goodness of fit test:
+
+```{r, echo=F}
+gender_cont <- table(cardio_clean$gender, cardio_clean$cardio)
+#gender_cont
+
+genders = c(22114, 12028)
+exp_freq = c(22819/(22819+12025),12025/(22819+12025))
+gender_chi <- chisq.test(genders, p = exp_freq)
+gender_chi
+```
+
+The p-value is `r gender_chi$p.value`. We can reject the null hypothesis because the p-value is less than the alpha value 0.05. The null hypothesis of the test is that these two variables are independent. Hence, gender does have effects on cardiovasuclar disease.
+
+
+Cardio vs Smoking:
+
+Barplot:
+
+```{r, echo=F}
+ggplot(data = cardio_clean, aes(x=cardio, fill=smoke))+
+  geom_bar()+
+  ggtitle("Cardio vs Smoking")+
+  xlab("Cardiovascular Disease")+
+  ylab("Count")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Smoking",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Non-smokers", "1" = "Smokers"))+
+  geom_text(stat = 'count', aes(label=..count..), position = position_stack(vjust = 0.5))
+```
+
+$\chi^{2}$ goodness of fit test:
+
+```{r, echo=F}
+smoke_cont <- table(cardio_clean$smoke, cardio_clean$cardio)
+#smoke_cont
+
+smokes = c(31302, 2840)
+exp_freq = c(31623/(31623+3221),3221/(31623+3221))
+smoke_chi <- chisq.test(smokes, p = exp_freq)
+smoke_chi
+```
+
+The p-value is `r smoke_chi$p.value`. We can reject the null hypothesis because the p-value is less than the alpha value 0.05. The null hypothesis of the test is that these two variables are independent. Hence, smoke does have effects on cardiovasuclar disease.
+
+
+Cardio vs Alcohol:
+
+Barplot:
+
+```{r, echo=F}
+ggplot(data = cardio_clean, aes(x=cardio, fill=alco))+
+  geom_bar()+
+  ggtitle("Cardio vs Alcohol")+
+  xlab("Cardiovascular Disease")+
+  ylab("Count")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Alcohol",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Non-drinkers", "1" = "Drinkers"))+
+  geom_text(stat = 'count', aes(label=..count..), position = position_stack(vjust = 0.5))
+```
+
+$\chi^{2}$ goodness of fit test:
+
+```{r, echo=F}
+alco_cont <- table(cardio_clean$alco, cardio_clean$cardio)
+#alco_cont
+
+alcos = c(32376, 1766)
+exp_freq = c(32913/(32913+1931),1931/(32913+1931))
+alco_chi <- chisq.test(alcos, p = exp_freq)
+alco_chi
+```
+
+The p-value is `r alco_chi$p.value`. We can reject the null hypothesis because the p-value is less than the alpha value 0.05. The null hypothesis of the test is that these two variables are independent. Hence, alcohol does have effects on cardiovasuclar disease.
+
+
+Cardio vs Physical Activity:
+
+Barplot:
+
+```{r, echo=F}
+ggplot(data = cardio_clean, aes(x=cardio, fill=active))+
+  geom_bar()+
+  ggtitle("Cardio vs Physical Activity")+
+  xlab("Cardiovascular Disease")+
+  ylab("Count")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Physical Activity",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Inactive", "1" = "Active"))+
+  geom_text(stat = 'count', aes(label=..count..), position = position_stack(vjust = 0.5))
+```
+
+$\chi^{2}$ goodness of fit test:
+
+```{r, echo=F}
+active_cont <- table(cardio_clean$active, cardio_clean$cardio)
+#active_cont
+
+actives = c(7227, 26916)
+exp_freq = c(6344/(6344+28500),28500/(6344+28500))
+active_chi <- chisq.test(actives, p = exp_freq)
+active_chi
+```
+
+The p-value is `r active_chi$p.value`. We can reject the null hypothesis because the p-value is less than the alpha value 0.05. The null hypothesis of the test is that these two variables are independent. Hence, physical activity does have effects on cardiovasuclar disease.
+
+
+
+
+There are 5 numeric variables: age, height, weight, systolic blood pressure, diastolic blood pressure.
+Boxplot and Welch's Two Sample T test (two sided) for each of them.
+
+Cardio vs Age:
+
+Boxplot:
+
+```{r, echo=F}
+#ggplot(cardio_clean, aes(x = age, fill=cardio)) +
+  #geom_histogram(alpha=.5, position="identity") +
+  #geom_vline(aes(xintercept=mean(cardio_clean$age[cardio_clean$cardio == 1], na.rm = T)), 
+  #          colour = "blue", size=0.5) +
+  #geom_vline(aes(xintercept=mean(cardio_clean$age[cardio_clean$cardio == 0], na.rm = T)), 
+  #         colour = "red", size=0.5) +
+  #geom_vline(aes(xintercept=median(cardio_clean$age[cardio_clean$cardio == 1], na.rm = T)), 
+  #          colour = "blue", linetype="dashed", size=0.5) +
+  #geom_vline(aes(xintercept=median(cardio_clean$age[cardio_clean$cardio == 0], na.rm = T)), 
+  #          colour = "red", linetype="dashed", size=0.5)+
+  #theme_bw()
+
+ggplot(cardio_clean, aes(x = cardio, y = age)) +
+  geom_boxplot(aes(fill=cardio)) +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", size=2)+
+  theme_bw()+
+  ggtitle("Cardio vs Age")+
+  xlab("Cardiovascular Disease")+
+  ylab("Age")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Cardiovascular Disease",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Absent", "1" = "Present"))
+```
+
+Two Sample T test:
+
+The average age for people who have cardiovascular disease is `r mean(cardio_present$age)`.
+
+The average age for people who do not have cardiovascular disease is `r mean(cardio_absent$age)`.
+
+Let us see if the means are significantly different. We should use a two sample T test to do this.
+
+```{r,echo=F}
+age_tt <- t.test(cardio_present$age, cardio_absent$age, alternative='two.sided')
+age_tt
+```
+
+The p-value of this two sample t-test is `r age_tt$p.value`. It is lower than the alpha value of 0.05, so we can reject the null that the means are equal. Hence, the average age is different for people who have cardiovascular disease and people who do not have cardiovascular disease.
+
+
+Cardio vs Height:
+
+Boxplot:
+
+```{r, echo=F}
+ggplot(cardio_clean, aes(x = cardio, y = height)) +
+  geom_boxplot(aes(fill=cardio)) +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", size=2)+
+  theme_bw()+
+  ggtitle("Cardio vs Height")+
+  xlab("Cardiovascular Disease")+
+  ylab("Height")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Cardiovascular Disease",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Absent", "1" = "Present"))
+```
+
+Two Sample T test:
+
+The average height for people who have cardiovascular disease is `r mean(cardio_present$height)`.
+
+The average height for people who do not have cardiovascular disease is `r mean(cardio_absent$height)`.
+
+Let us see if the means are significantly different. We should use a two sample T test to do this.
+
+```{r,echo=F}
+height_tt <- t.test(cardio_present$height, cardio_absent$height, alternative='two.sided')
+height_tt
+```
+
+The p-value of this two sample t-test is `r height_tt$p.value`. It is lower than the alpha value of 0.05, so we can reject the null that the means are equal. Hence, the average height is different for people who have cardiovascular disease and people who do not have cardiovascular disease.
+
+
+Cardio vs Weight:
+
+Boxplot:
+
+```{r, echo=F}
+ggplot(cardio_clean, aes(x = cardio, y = weight)) +
+  geom_boxplot(aes(fill=cardio)) +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", size=2)+
+  theme_bw()+
+  ggtitle("Cardio vs Weight")+
+  xlab("Cardiovascular Disease")+
+  ylab("Weight")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Cardiovascular Disease",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Absent", "1" = "Present"))
+```
+
+Two Sample T test:
+
+The average weight for people who have cardiovascular disease is `r mean(cardio_present$weight)`.
+
+The average weight for people who do not have cardiovascular disease is `r mean(cardio_absent$weight)`.
+
+Let us see if the means are significantly different. We should use a two sample T test to do this.
+
+```{r,echo=F}
+weight_tt <- t.test(cardio_present$weight, cardio_absent$weight, alternative='two.sided')
+weight_tt
+```
+
+The p-value of this two sample t-test is `r weight_tt$p.value`. It is lower than the alpha value of 0.05, so we can reject the null that the means are equal. Hence, the average weight is different for people who have cardiovascular disease and people who do not have cardiovascular disease.
+
+
+Cardio vs Systolic Blood Pressure:
+
+Boxplot:
+
+```{r, echo=F}
+ggplot(cardio_clean, aes(x = cardio, y = ap_hi)) +
+  geom_boxplot(aes(fill=cardio)) +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", size=2)+
+  theme_bw()+
+  ggtitle("Cardio vs Systolic Blood Pressure")+
+  xlab("Cardiovascular Disease")+
+  ylab("Systolic Blood Pressure")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Cardiovascular Disease",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Absent", "1" = "Present"))
+```
+
+Two Sample T test:
+
+The average systolic blood pressure for people who have cardiovascular disease is `r mean(cardio_present$ap_hi)`.
+
+The average systolic blood pressure for people who do not have cardiovascular disease is `r mean(cardio_absent$ap_hi)`.
+
+Let us see if the means are significantly different. We should use a two sample T test to do this.
+
+```{r,echo=F}
+ap_hi_tt <- t.test(cardio_present$ap_hi, cardio_absent$ap_hi, alternative='two.sided')
+ap_hi_tt
+```
+
+The p-value of this two sample t-test is `r ap_hi_tt$p.value`. It is lower than the alpha value of 0.05, so we can reject the null that the means are equal. Hence, the average systolic blood pressure is different for people who have cardiovascular disease and people who do not have cardiovascular disease.
+
+
+Cardio vs Diastolic Blood Pressure:
+
+Boxplot:
+
+```{r, echo=F}
+ggplot(cardio_clean, aes(x = cardio, y = ap_lo)) +
+  geom_boxplot(aes(fill=cardio)) +
+  stat_summary(fun.y=mean, colour="darkred", geom="point", size=2)+
+  theme_bw()+
+  ggtitle("Cardio vs Diastolic Blood Pressure")+
+  xlab("Cardiovascular Disease")+
+  ylab("Diastolic Blood Pressure")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_x_discrete(labels=c("0" = "Absent", "1" = "Present"))+
+  scale_fill_discrete(name="Cardiovascular Disease",
+                      breaks=c("0", "1"),
+                      labels=c("0" = "Absent", "1" = "Present"))
+```
+
+Two Sample T test:
+
+The average diastolic blood pressure for people who have cardiovascular disease is `r mean(cardio_present$ap_lo)`.
+
+The average diastolic blood pressure for people who do not have cardiovascular disease is `r mean(cardio_absent$ap_lo)`.
+
+Let us see if the means are significantly different. We should use a two sample T test to do this.
+
+```{r,echo=F}
+ap_lo_tt <- t.test(cardio_present$ap_lo, cardio_absent$ap_lo, alternative='two.sided')
+ap_lo_tt
+```
+
+The p-value of this two sample t-test is `r ap_lo_tt$p.value`. It is lower than the alpha value of 0.05, so we can reject the null that the means are equal. Hence, the average diastolic blood pressure is different for people who have cardiovascular disease and people who do not have cardiovascular disease.
+
+
+
+## Chapter 4 Decision tree 
+
+The dataset is splitted into 70% train set and 30% test set. We use Decision Tree to predict patients with cardiovascular disease. We will construct classification tree because our target variable is categorical. 
+
+```{r, echo=F}
+set.seed(1)
+cardio_train_row = sample(1:nrow(cardio_clean), round(0.7*nrow(cardio_clean),0), replace = FALSE)
+
+cardio_training = cardio_clean[cardio_train_row, ]
+cardio_test = cardio_clean[-cardio_train_row, ]
+
+#nrow(cardio_training)
+#nrow(cardio_test)
+```
+
+### 4.1 Classification Tree 1
+
+```{r, echo=F}
+loadPkg("rpart") # Classification trees, rpart(formula, data=, method=,control=) 
+cardiofit1 <- rpart(cardio ~ .,
+  	method = 'class', data=cardio_training, control = rpart.control(minsplit = 1500, minbucket = 10, cp=0.001))
+
+# Apply the decision tree model on test set
+cardio_test$pred <- predict(object = cardiofit1, newdata = cardio_test, type = "class")
+
+# Fancy plot
+loadPkg("rattle") 
+fancyRpartPlot(cardiofit1)
+```
+
+
+Decision Tree Evaluation
+```{r, echo=F}
+loadPkg("caret") 
+cm = confusionMatrix( data = cardio_test$pred, reference = cardio_test$cardio )
+cm
+#print('Overall: ')
+#cm$overall
+#print('Class: ')
+#cm$byClass
+
+```
+
+The overall accuracy is 72.2%.
+
+This tree uses the following variables: ap_hi, age, cholesterol, ative, smoke, and weight. The first split is based on ap_hi value 130. If the patient's systolic pressure is below 130, then we go to the left branch. If ap_hi is higher than 130, we go to the right. There is no more split in the right branch. 76% of patients belong to this right branch are predicted to get cardiovascular disease. The left branch has more splits based on age, cholesterol, active, smoke, and weight. From the tree, we can say that people younger than 55 with normal or just above normal cholesterol levels are less likely to be predicted to have CVD. The tree predicts only 22% of this group having CVD. For people older than 55, it depends on other factors such as their physical activity, smoking habit, and their weight. If they are active, non-smokers, less than 91 kg and less than 63 years of age, the tree predicts 46% of this group are having CVD. It seems like for older people, it does not matter if they exercise, non-smoke, and keep a healthy weight, they still have a 46% prediction of getting the disease. However, the data collected from patients may be subjective because we don't know how they actually considered active, or smoking habit.
+
+Therefore, another tree is created with less levels below.
+
+### 4.2 Classification Tree 2
+
+```{r, echo=F}
+loadPkg("rpart") # Classification trees, rpart(formula, data=, method=,control=) 
+cardiofit2 <- rpart(cardio ~ .,
+  	method = 'class', data=cardio_training, control = rpart.control(minsplit = 6000, minbucket = 100, cp=0.001))
+
+#printcp(cardiofit2) 
+#plotcp(cardiofit2) 
+#summary(cardiofit2) 
+
+# plot tree 
+#plot(cardiofit2, uniform=TRUE, main="Classification Tree for Cardio Disease")
+#text(cardiofit2, use.n=TRUE, all=TRUE, cex=.8)
+
+# Fancy Plots
+#loadPkg("rpart.plot")
+#rpart.plot(cardiofit2)
+#loadPkg("rattle") 
+fancyRpartPlot(cardiofit2)
+```
+
+```{r}
+# Apply the decision tree model on test set
+cardio_test$pred <- predict(object = cardiofit2, newdata = cardio_test, type = "class")
+
+```
+
+Decision Tree Evaluation
+```{r, echo=F}
+#loadPkg("caret") 
+cm = confusionMatrix( data = cardio_test$pred, reference = cardio_test$cardio )
+cm
+#print('Overall: ')
+#cm$overall
+#print('Class: ')
+#cm$byClass
+```
+
+Overall Accuracy is 72.1%, not much difference from the first tree. However, this second tree is easier to classify cardiovascular disease. This second tree uses the most important variables that affect the chance of getting the disease such as ap_hi, age, and cholesterol variables. The subjective variables such as smoke or active levels are removed. The other factors even though contribute to the disease, but do not have high importance.
+
+The first split in the tree is still using ap_hi at 130. Only 22% of people with systolic pressure less than 130, younger than 55, and have a normal or above normal cholesterol levels are predicted to have CVD. If they have high cholesterol level, they have 58% chance of getting the disease. If they are over 55 and have high cholesterol level, 70% of this group are predicted to get CVD. On the other hand, if they are over 55 but maintain a normal or above normal chorlesterol level, their chance of getting the disease can be reduced. (37% for people less than 61, and 52% for people older than 61).
+
+## Chapter 5: K-Nearest Neighbors(KNN)
+
+KNN is the second method we used to predict the CVD.Some preprocessing were done, such as scaling the predictors: Age, Height, Weight, Systolic Pressure, Diastolic Pressure. The categorical predictors i.e. Cholesterol and Glucose had three ordinal levels [1: normal, 2: above normal, 3: well above normal]. These two variables were one hot encoded to convert them into dichotomous predictors. The dataset was split into a 7:3 train and test split ratio before building models over the training data points for k-values ranging from 3 to 20.  
+ 
+
+```{r, echo=F}
+#arshiful 
+#cardio.org = read.csv('cardio.csv')# imported as cardio already
+#str(cardio.org)
+#summary(cardio.org)
+#head(cardio.org)
+```
+
+
+```{r, include=F}
+library(modelr)
+#cardio.org$age<-floor(cardio.org$age/365.25)# done by trinh 
+#head(cardio.org)
+
+#cardio.org$cardio<-as.factor(cardio.org$cardio) # done by trinh
+
+cardio_clean$cholesterol<-as.factor(cardio_clean$cholesterol)
+#constructing three binary variables for cholesterol using OHE (one hot encoding)
+cholesterol_binary<-model_matrix(cardio_clean,cardio~cholesterol-1)
+head(cholesterol_binary,10)
+cardio.new<-cbind(cardio_clean,cholesterol_binary)
+head(cardio.new)
+
+
+cardio_clean$gluc<-as.factor(cardio_clean$gluc)
+#constructing three binary variables for glucose using OHE
+gluc_binary<-model_matrix(cardio_clean,cardio~gluc-1)
+head(gluc_binary,10)
+cardio.new2<-cbind(cardio.new,gluc_binary)
+head(cardio.new2,10)
+
+```
+
+
+```{r}
+set.seed(1)
+#just making a copy to use in scaling
+cardio.new2.scaled<-data.frame(cardio.new2)
+
+
+#need to scale age, height, weight, ap_hi, ap_lo
+cardio.new2.scaled$age <- scale(cardio.new2.scaled$age, center = TRUE, scale = TRUE)
+cardio.new2.scaled$height <- scale(cardio.new2.scaled$height, center = TRUE, scale = TRUE)
+cardio.new2.scaled$weight <- scale(cardio.new2.scaled$weight, center = TRUE, scale = TRUE)
+cardio.new2.scaled$ap_hi <- scale(cardio.new2.scaled$ap_hi, center = TRUE, scale = TRUE)
+cardio.new2.scaled$ap_lo <- scale(cardio.new2.scaled$ap_lo, center = TRUE, scale = TRUE)
+
+cardio.new2.scaled$gender <- as.numeric(cardio.new2.scaled$gender)
+cardio.new2.scaled$smoke <- as.numeric(cardio.new2.scaled$smoke)
+cardio.new2.scaled$alco <- as.numeric(cardio.new2.scaled$alco)
+cardio.new2.scaled$active <- as.numeric(cardio.new2.scaled$active)
+
+
+#seperate test and train
+cardio_data_train_rows=sample(1:nrow(cardio.new2.scaled),round(0.7*nrow(cardio.new2.scaled),0),replace=FALSE)       
+cardio_data_train=cardio.new2.scaled[cardio_data_train_rows,]
+cardio_data_test=cardio.new2.scaled[-cardio_data_train_rows,]
+
+#seperate x from test and train , y from test and train
+#xtrain<-subset(cardio_data_train, select=-c(id,cholesterol,gluc,cardio))
+#xtest<-subset(cardio_data_test, select=-c(id,cholesterol,gluc,cardio))
+
+
+#ytrain<-subset(cardio_data_train, select=c(cardio))
+#ytest<-subset(cardio_data_test, select=c(cardio))
+
+#seperate x from test and train , y from test and train
+xtrain<-cardio_data_train[,-c(7,8,12)]
+xtest<-cardio_data_test[,-c(7,8,12)]
+
+
+ytrain<-cardio_data_train[,c(12)]
+ytest<-cardio_data_test[,c(12)]
+
+```
+
+
+```{r}
+library("gmodels")
+library("FNN")
+
+kVsAcc<-data.frame(K=integer(),Accuracy=double())
+colnames(kVsAcc)<-c("K", "Accuracy")
+
+for( K in 3:20 ) {
+  print(paste("--------------------------------------------------------" ))
+  print(paste("-------------------- When k = ",K," ----------------------" )) 
+  
+  knn_model <- knn(train = xtrain, test = xtest, cl=ytrain, k=K) 
+  ct <- CrossTable(ytest, knn_model, prop.chisq = FALSE)
+  acc = 0 
+  for(i in 1:dim(ct$prop.tbl)[1]) { 
+    acc = acc + ct$prop.tbl[i,i] 
+  }
+  print(paste("Accuracy = ",acc)) 
+  
+  kVsAcc[nrow(kVsAcc) + 1,]=c(K,acc)
+  
+  print(paste("--------------------------------------------------------" ))
+  print(paste("--------------------------------------------------------" ))
+  print(paste("                                                        " ))
+  print(paste("                                                        " ))
+  knn_model = NULL  
+}
+
+
+library("ggplot2")
+ggplot(kVsAcc, aes(x = kVsAcc$K, y = kVsAcc$Accuracy)) + 
+  geom_line(color = "blue", size = 1) +
+  geom_point(size = 2)
+```
+
+The accuracy of the models when applied over the test data points seems to be improving and increasing but at a decreasing rate. However using the elbow method we observed that right around k=20 and onwards the incremental improvement trails off. The accuracy at this k-value is 72.1% which is the almost same as that of the decision tree model's accuracy.
+
+## Chapter 6: Logistic Regression
+
+I split the sample in to a training and test set with a 70-30 ratio to run a logistic regression model on.
+```{r, include=F}
+#install.packages("caTools")
+library(caTools)
+set.seed(123)
+split = sample.split(cardio_clean$cardio, SplitRatio = 0.7)
+cardio_log_train = subset(cardio_clean,split == TRUE)
+cardio_log_test = subset(cardio_clean, split == FALSE)
+```
+
+I'll print out the summary of the logistic model so we can look at the coefficients. 
+```{r, echo = F}
+Cardio_log <- glm(cardio~ap_hi + ap_lo + age + cholesterol + weight + gluc + active +  smoke + height + alco +  gender, data = cardio_log_train, family = "binomial")
+summary(Cardio_log)
+```
+
+All p-values are small, except for gluc2 and gender2. It seems like gender or the glucose levels 1 and 2 don't have a lot of effect on cardio disease. However, glucose level 3 (the highest level) and other variables do affect cardio disease. I'm also very suspiscious of the negative coefficient that smoking shows. That smoking and cardiovascular disease have a postiive correlation is something that's common knowledge and not something I'm willing to contest. This could be possible overfitting messing with the coefficient signs. It could also be that a large number of patients who reported to having cardiovascular disease, denied smoking.
+
+I'll use this model to predict on the training set and generate an ROC curve from which I'll derive a threshold value to work with.
+```{r, include = F}
+predictTrain = predict(Cardio_log, type="response")
+#summary(predictTrain)
+tapply(predictTrain, cardio_log_train$cardio, mean)
+```
+
+```{r, include = F}
+#install.packages("ROCR")
+library(ROCR)
+ROCRpred = prediction(predictTrain, cardio_log_train$cardio)
+ROCRperf = performance(ROCRpred, "tpr", "fpr")
+plot(ROCRperf, colorize=TRUE)
+plot(ROCRperf, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+
+```
+
+```{r, echo = F}
+auc_ROCR <- performance(ROCRpred, measure = "auc")
+auc_ROCR <- auc_ROCR@y.values[[1]]
+auc_ROCR
+```
+
+Area under the curve is only 0.789. This is not considered a very good model.
+
+Confusion matrix for this model - we're using a  threshold value of 0.6, because we want prefer having a lower number of  false negatives than false positives. In other words, we want low sensitivity over specificity. 
+```{r, echo = F}
+results1 = table(cardio_log_train$cardio, predictTrain > 0.6)
+results1
+```
+
+I'll run this model on test data next and compute the accuracy.
+
+```{r, include = F}
+predictTest = predict(Cardio_log, type = "response", newdata = cardio_log_test)
+results_test1 = table(cardio_log_test$cardio, predictTest >0.6)
+results_test1
+```
+
+Accuracy of the model on the test data: 
+
+```{r}
+acc_test1 <- sum(results_test1[row(results_test1) == col(results_test1)]) / sum(results_test1)
+acc_test1
+```
+
+The accuracy is 70.8%. This is a little less than the KNN and decision tree's accuracies.
+
+
+Fitting again, after rearranging some of the parameters and removing gender:
+
+```{r, echo = F}
+Cardio_log1 <- glm(cardio~ap_hi + ap_lo + age + cholesterol + weight + gluc + active +  smoke + height + alco, data = cardio_log_train, family = "binomial")
+summary(Cardio_log1)
+```
+
+Not much of a change this time. I'll still continue.
+
+Making the predictions on the training data and looking at the ROC curve:
+
+```{r, include = F}
+predictTrain1 = predict(Cardio_log1, type="response")
+#summary(predictTrain1)
+tapply(predictTrain1, cardio_log_train$cardio, mean)
+```
+
+
+```{r, echo = F}
+ROCRpred1 = prediction(predictTrain1, cardio_log_train$cardio)
+ROCRperf1 = performance(ROCRpred1, "tpr", "fpr")
+plot(ROCRperf1, colorize=TRUE)
+plot(ROCRperf1, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+Let's see the accuracy for this model.
+
+```{r}
+auc_ROCR1 <- performance(ROCRpred1, measure = "auc")
+auc_ROCR1 <- auc_ROCR1@y.values[[1]]
+auc_ROCR1
+```
+
+Area under the curve is still 0.789. It doesn't inmprove from the first logistic model.
+
+
+Running on the test set again: 
+
+```{r}
+predictTest1 = predict(Cardio_log1, type = "response", newdata = cardio_log_test)
+```
+
+Confusion matrix for the test:
+```{r}
+results_test2 = table(cardio_log_test$cardio, predictTest1 >0.6)
+results_test2
+```
+
+Accuracy of the second model:
+
+```{r}
+acc_test2 <- sum(results_test2[row(results_test2) == col(results_test2)]) / sum(results_test2)
+acc_test2
+```
+
+I'm not happy with this as there is high multicollinearity. We're gonna try a model with principal components now.
+
+## Chapter 7: PCR Analysis
+
+I wanted to do a PCR to see if a dimensional analysis would help with the overfitting. 
+```{r, include = F}
+cardio1 <- read.csv("cardio.csv")
+cardio1 = cardio1[,-1]
+#Remove negative values from ap_hi, ap_lo, and subset data with ap_hi and ap_lo less than 500.
+cardio_clean1 = subset(cardio1, ap_hi > 0 & ap_hi < 500 & ap_lo > 0 & ap_lo < 500)
+
+#Convert age (days) into age(years)
+cardio_clean1$age <- floor(cardio_clean1$age / 365)
+```
+
+Building the components and looking at the distribution of variance: 
+```{r, include = F}
+cardio_pcr <- data.frame(cardio_clean1)
+#cardio_pcr$cardio <- as.numeric(as.character(cardio_pcr$cardio))
+#str(cardio_pcr)
+pc_cardio <- prcomp(cardio_pcr, scale = TRUE)
+summary(pc_cardio)
+pc_cardio$rotation
+```
+
+The most important component has 20% of the variance, the second component has 15.9% of variance, and the third component has 10.8% variance.
+
+
+```{r, echo = F}
+biplot(pc_cardio)
+```
+
+
+```{r}
+pr.var <- (pc_cardio$sdev^2)
+pve.nc <- pr.var/sum(pr.var)
+plot(cumsum(pve.nc), xlab="Principal Component (standardized)", ylab ="Cumulative Proportion of Variance Explained",ylim=c(0,1),type="b")
+```
+
+Each component has a certain percentage in variance. It takes 10 components to capture 90% of variance. Turns out there's a lot of variance and I'm not being able to reduce much of the components. 
+
+```{r PCA_PCR_xform_fcns, include = F}
+PCAxform <- function(df, z=TRUE) { 
+  #' Obtain the dataframe with the Principal Components after the rotation. 
+  #' ELo 201911 GWU DATS
+  #' @param df The dataframe.
+  #' @param z T/F or 0/1 for z-score to be used
+  #' @return The transformed dataframe.
+  #' @examples
+  #' tmp = PCAxform(USArrests,TRUE)
+
+  z = ifelse(z==TRUE || z=="true" || z=="True" || z=="T" || z=="t" || z==1 || z=="1", TRUE, FALSE) # standardize z 
+  if(z) { df = data.frame(scale(df))}  # scale not safe for non-numeric colunms, but PCA requires all variables numerics to begin with.
+  nmax = length(df)
+  pc_cardio = prcomp(df,scale=z)
+  df1 = data.frame( as.matrix(df) %*% pc_cardio$rotation ) # use matrix multiplication in R:  %*% 
+  return(df1)
+}
+# Sample 
+# USArrests.z.pc = PCAxform(USArrests,TRUE)
+# summary(USArrests.z.pc)
+
+# To-be-implemented: for z=TRUE, it will be better to have the z-scaling option for x-vars and y separately. It is actually convenient keep y in original units.
+PCRxform <- function(df, y, z=TRUE) { 
+  #' Obtain the dataframe with the Principal Components after the rotation for PCRegression. Requires related function PCAxform()
+  #' ELo 201903 GWU DATS
+  #' @param df The dataframe.
+  #' @param y The y-variable column index number(int), or the name of y-variable
+  #' @param z T/F or 0/1 for z-score used
+  #' @return The transformed dataframe.
+  #' @examples
+  #' tmp = PCAxform(USArrests,TRUE)
+
+  z = ifelse(z==TRUE || z=="true" || z=="True" || z=="T" || z=="t" || z==1 || z=="1", TRUE, FALSE) # standardize z 
+  if( is.integer(y) ) { # y is integer
+    if( y>length(df) || y<1 ) {
+      print("Invalid column number")
+      return(NULL)
+    }
+    if(z) { df1 = data.frame( scale(df[y]) ) } else { df1 = df[y] } # save y-var in df1
+    df = df[-y] # remove y-variable in df
+  } else { # y is not integer, so interpret as name
+    if(z) { df1 = data.frame( scale( df[names(df) == y] ) ) } else { df1 = df[names(df) == y] }
+    df = df[names(df) != y]
+  }
+  if( length(df1)<1 ) {
+    print("Variable name not found in data.frame")
+    return(NULL)
+  }
+  df2 = PCAxform(df,z)
+  df1 = data.frame(df1,df2)
+  return(df1)
+}
+# Sample 
+# USArrests.z.pcr = PCRxform(USArrests,3,TRUE) # OR
+# USArrests.z.pcr = PCRxform(USArrests,"UrbanPop",TRUE) 
+# summary(USArrests.z.pcr)
+
+```
+
+We build the data frame with the components and split the data into training and test sets 7:3 ratio.
+
+```{r, include=F}
+cardio_pcr.pcr = PCRxform(cardio_pcr, "cardio", FALSE)
+#cardio_pcr.pcr
+```
+
+```{r, include = F}
+set.seed(567)
+split = sample.split(cardio_pcr.pcr$cardio, SplitRatio = 0.7)
+cardio_pcr_train = subset(cardio_pcr.pcr,split == TRUE)
+cardio_pcr_test = subset(cardio_pcr.pcr, split == FALSE)
+```
+
+Fitting a glm on the pcr training set and looking at the coefficients:
+
+```{r, echo = F}
+pcr_log <- glm(cardio ~. -PC11, data = cardio_pcr_train, family = "binomial")
+summary(pcr_log)
+```
+
+
+Predicting on the training set and looking at the ROC curve to decide a threshold:
+
+```{r, include = F}
+predictTrain_pcr = predict(pcr_log, type="response")
+summary(predictTrain_pcr)
+tapply(predictTrain_pcr, cardio_pcr_train$cardio, mean)
+```
+
+```{r, echo = F}
+ROCRpred_pcr = prediction(predictTrain_pcr, cardio_pcr_train$cardio)
+ROCRperf_pcr = performance(ROCRpred_pcr, "tpr", "fpr")
+plot(ROCRperf_pcr, colorize=TRUE)
+plot(ROCRperf_pcr, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+
+```{r, include = F}
+auc_ROCRpred_pcr <- performance(ROCRpred_pcr, measure = "auc")
+auc_ROCRpred_pcr <- auc_ROCRpred_pcr@y.values[[1]]
+auc_ROCRpred_pcr
+```
+
+The AUC is still 0.788, though. No change.
+
+I'll run this on the test set.
+
+```{r, include = F }
+predictTest_pcr = predict(pcr_log, type="response", newdata = cardio_pcr_test)
+summary(predictTest_pcr)
+```
+
+Table for predictions on test data:
+```{r, echo = F}
+results_pcrtest = table(cardio_pcr_test$cardio, predictTest_pcr > 0.6)
+results_pcrtest
+```
+
+Accuracy for fit on test data:
+```{r}
+acc.pcr <- sum(results_pcrtest[row(results_pcrtest) == col(results_pcrtest)]) / sum(results_pcrtest)
+acc.pcr
+```
+
+I'll try removing PC4 since it had a lower p value in the previous fit.
+
+Fit after removing Principal Component 4:
+
+```{r, echo = F}
+pcr_log1 <- glm(cardio ~. -PC4 -PC11, data = cardio_pcr_train, family = "binomial")
+summary(pcr_log1)
+```
+
+
+Using glm model on training data and generating a ROC curve:
+```{r, include = F}
+predictTrain_pcr1 = predict(pcr_log1, type="response")
+summary(predictTrain_pcr1)
+tapply(predictTrain_pcr1, cardio_pcr_train$cardio, mean)
+```
+
+```{r,echo = F}
+ROCRpred_pcr1 = prediction(predictTrain_pcr1, cardio_pcr_train$cardio)
+ROCRperf_pcr1 = performance(ROCRpred_pcr1, "tpr", "fpr")
+plot(ROCRperf_pcr1, colorize=TRUE)
+plot(ROCRperf_pcr1, colorize=TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj=c(-0.2,1.7))
+```
+
+```{r, include = F}
+auc_ROCRpred_pcr1 <- performance(ROCRpred_pcr1, measure = "auc")
+auc_ROCRpred_pcr1 <- auc_ROCRpred_pcr1@y.values[[1]]
+auc_ROCRpred_pcr1
+```
+
+Running model on test data: 
+
+```{r, include = F}
+predictTest_pcr1 = predict(pcr_log1, type="response", newdata = cardio_pcr_test)
+summary(predictTest_pcr1)
+results_pcrtest1 = table(cardio_pcr_test$cardio, predictTest_pcr > 0.6)
+results_pcrtest1
+```
+
+Accuracy for second fit on the test data:
+```{r}
+acc.pcr1 <- sum(results_pcrtest1[row(results_pcrtest1) == col(results_pcrtest1)]) / sum(results_pcrtest1)
+acc.pcr1
+```
+
+So it seems the second fit still had no effect on my AUC and accuracy. PCR didn't change much of my results.
+
+
+## Chapter 8: Conclusion
+
+We have done Decision Tree, KNN, and Logistics Regression predictions on the cardiovasular disease dataset. Both KNN and Decision Tree gives 72.2% accuracy, Logistic Regression gives 70.9% accuracy and PCR gives 70.8% accuracy. 
+
+We choose KNN and Decision Tree as our best models to predict cardiovascular disease. However, in reality, 72.2% accuracy is low and may not be accepted to use in health care system. On the other side, some of the variables were answered by patient's subjective opinion. Each patient may have a different opinions for being active, smoking, and alcohol intake, so some data we have might be bias. It would be better if we can have unbiased information by asking a frequency question like how many times a patient exercise per week and how long is one session. Same type of questions can be asked for alcohol intake and smoking. 
+
+In conclusion, after analyzing this dataset and performing different models, we conclude that KNN and Decision Tree are the best models from our results. Blood pressure, age, and cholesterol are the important factors contribute to cardiovascular disease. However, keeping the healthy lifestyle will affect the chance of getting cardiovascular disease. Drinking, smoking, and daily diet affect blood pressure and cholesterol and therefore they will indirectly affect the heart functions. A few take home keypoints are exercise regularly, do not smoke or drink alcohol. 
+
+
+## Chapter 9: References
+
+https://www.who.int
+
+https://www.cdc.gov/heartdisease/facts.html
+
+https://www.kaggle.com/sulianova/cardiovascular-disease-dataset
+
+
+
